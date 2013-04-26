@@ -73,7 +73,7 @@ public class WebsockifyClient {
 //            customHeaders.put("Sec-WebSocket-Extensions", "x-webkit-deflate-frame");
             customHeaders.put("server", "vncserver");
 			final WebSocketClientHandshaker handshaker = new WebSocketClientHandshakerFactory().newHandshaker(uri, WebSocketVersion.V13, "binary, base64", false, customHeaders);
-			wbcb.setPipelineFactory(new WebsockifyProxyPipelineFactory(vnccscf, resolver, sslSetting, keystore, keystorePassword, keystoreKeyPassword, webDirectory));
+			wbcb.setPipelineFactory(new WebsockifyProxyPipelineFactory(vnccscf, resolver, handshaker, sslSetting, keystore, keystorePassword, keystoreKeyPassword, webDirectory));
 			// cb.setPipelineFactory(new ChannelPipelineFactory() {
 			// public ChannelPipeline getPipeline() throws Exception {
 			// ChannelPipeline pipeline = Channels.pipeline();
@@ -98,7 +98,7 @@ public class WebsockifyClient {
 				e.printStackTrace();
 			}
 
-			ch.write(new TextWebSocketFrame("yahoo"));
+//			ch.write(new TextWebSocketFrame("yahoo"));
 
 		} catch (URISyntaxException e) {
 			e.printStackTrace();

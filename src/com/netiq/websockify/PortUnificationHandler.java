@@ -190,7 +190,7 @@ public class PortUnificationHandler extends FrameDecoder {
 		ChannelPipeline p = ctx.getPipeline();
 
 		Logger.getLogger(PortUnificationHandler.class.getName()).fine("Websocket proxy request from " + ctx.getChannel().getRemoteAddress() + ".");
-
+		System.out.println("webby");
 		// p.addLast("decoder", new HttpRequestDecoder());
 		// p.addLast("aggregator", new HttpChunkAggregator(65536));
 		// p.addLast("encoder", new HttpResponseEncoder());

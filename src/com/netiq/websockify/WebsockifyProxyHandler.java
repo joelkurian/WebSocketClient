@@ -58,6 +58,7 @@ import org.jboss.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
 import org.jboss.netty.handler.codec.http.websocketx.PingWebSocketFrame;
 import org.jboss.netty.handler.codec.http.websocketx.PongWebSocketFrame;
 import org.jboss.netty.handler.codec.http.websocketx.TextWebSocketFrame;
+import org.jboss.netty.handler.codec.http.websocketx.WebSocketClientHandshaker;
 import org.jboss.netty.handler.codec.http.websocketx.WebSocketFrame;
 import org.jboss.netty.handler.codec.http.websocketx.WebSocketServerHandshaker;
 import org.jboss.netty.handler.codec.http.websocketx.WebSocketServerHandshakerFactory;
@@ -76,7 +77,7 @@ public class WebsockifyProxyHandler extends SimpleChannelUpstreamHandler {
 	private final ClientSocketChannelFactory cf;
 	private final IProxyTargetResolver resolver;
 
-	private WebSocketServerHandshaker handshaker = null;
+	private WebSocketClientHandshaker handshaker = null;
 	private boolean isConnected = false;
 	private String webDirectory;
 
@@ -87,9 +88,10 @@ public class WebsockifyProxyHandler extends SimpleChannelUpstreamHandler {
 
 	private volatile Channel outboundChannel;
 
-	public WebsockifyProxyHandler(ClientSocketChannelFactory cf, IProxyTargetResolver resolver, String webDirectory) {
+	public WebsockifyProxyHandler(ClientSocketChannelFactory cf, IProxyTargetResolver resolver, WebSocketClientHandshaker handshaker, String webDirectory) {
 		this.cf = cf;
 		this.resolver = resolver;
+		this.handshaker = handshaker;
 		this.outboundChannel = null;
 		this.webDirectory = webDirectory;
 	}
@@ -145,81 +147,116 @@ public class WebsockifyProxyHandler extends SimpleChannelUpstreamHandler {
 
 	@Override
 	public void messageReceived(ChannelHandlerContext ctx, final MessageEvent e) throws Exception {
-		Object msg = e.getMessage();
-		// An HttpRequest means either an initial websocket connection
-		// or a web server request
-		if (msg instanceof HttpRequest) {
-			handleHttpRequest(ctx, (HttpRequest) msg, e);
-			// A WebSocketFrame means a continuation of an established websocket
-			// connection
-		} else if (msg instanceof WebSocketFrame) {
-			handleWebSocketFrame(ctx, (WebSocketFrame) msg, e);
-			// A channel buffer we treat as a VNC protocol request
-		} else if (msg instanceof ChannelBuffer) {
-			handleVncDirect(ctx, (ChannelBuffer) msg, e);
-		}
-	}
-
-	private void handleHttpRequest(ChannelHandlerContext ctx, HttpRequest req, final MessageEvent e) throws Exception {
-		// Allow only GET methods.
-		if (req.getMethod() != GET) {
-			sendHttpResponse(ctx, req, new DefaultHttpResponse(HTTP_1_1, FORBIDDEN));
+		Channel ch = ctx.getChannel();
+		if (!handshaker.isHandshakeComplete()) {
+			handshaker.finishHandshake(ch, (HttpResponse) e.getMessage());
+			System.out.println("WebSocket Client connected!");
 			return;
 		}
 
-		String upgradeHeader = req.getHeader("Upgrade");
-		if (upgradeHeader != null && upgradeHeader.toUpperCase().equals("WEBSOCKET")) {
-			Logger.getLogger(WebsockifyProxyHandler.class.getName()).fine("Websocket request from " + e.getRemoteAddress() + ".");
-			// Handshake
-			WebSocketServerHandshakerFactory wsFactory = new WebSocketServerHandshakerFactory(this.getWebSocketLocation(req), "base64", false);
-			this.handshaker = wsFactory.newHandshaker(req);
-			if (this.handshaker == null) {
-				wsFactory.sendUnsupportedWebSocketVersionResponse(ctx.getChannel());
-			} else {
-				// deal with a bug in the flash websocket emulation
-				// it specifies WebSocket-Protocol when it seems it should
-				// specify Sec-WebSocket-Protocol
-				String protocol = req.getHeader("WebSocket-Protocol");
-				String secProtocol = req.getHeader("Sec-WebSocket-Protocol");
-				if (protocol != null && secProtocol == null) {
-					req.addHeader("Sec-WebSocket-Protocol", protocol);
-				}
-				this.handshaker.handshake(ctx.getChannel(), req);
-			}
-			// ensureTargetConnection(e, true, null);
-		} else {
-			HttpRequest request = (HttpRequest) e.getMessage();
-			String redirectUrl = isRedirect(request.getUri());
-			if (redirectUrl != null) {
-				Logger.getLogger(WebsockifyProxyHandler.class.getName()).fine("Redirecting to " + redirectUrl + ".");
-				HttpResponse response = new DefaultHttpResponse(HTTP_1_1, TEMPORARY_REDIRECT);
-				response.setHeader(HttpHeaders.Names.LOCATION, redirectUrl);
-				sendHttpResponse(ctx, req, response);
-				return;
-			} else if (webDirectory != null)/*
-											 * not a websocket connection
-											 * attempt
-											 */{
-				handleWebRequest(ctx, e);
-			}
+		if (e.getMessage() instanceof HttpResponse) {
+			HttpResponse response = (HttpResponse) e.getMessage();
+			throw new Exception("Unexpected HttpResponse (status=" + response.getStatus() + ", content=" + response.getContent().toString(CharsetUtil.UTF_8) + ')');
 		}
+
+		WebSocketFrame frame = (WebSocketFrame) e.getMessage();
+		if (frame instanceof TextWebSocketFrame) {
+			TextWebSocketFrame textFrame = (TextWebSocketFrame) frame;
+			handleWebSocketFrame(ctx, textFrame, e);
+			System.out.println("WebSocket Client received message: " + textFrame.getText());
+		} else if (frame instanceof PongWebSocketFrame) {
+			System.out.println("WebSocket Client received pong");
+		} else if (frame instanceof CloseWebSocketFrame) {
+			System.out.println("WebSocket Client received closing");
+			ch.close();
+		} else if (frame instanceof PingWebSocketFrame) {
+			System.out.println("WebSocket Client received ping, response with pong");
+			ch.write(new PongWebSocketFrame(frame.getBinaryData()));
+		}
+
+		// Object msg = e.getMessage();
+		// System.out.println(msg);
+		// // An HttpRequest means either an initial websocket connection
+		// // or a web server request
+		// if (msg instanceof HttpRequest) {
+		// handleHttpRequest(ctx, (HttpRequest) msg, e);
+		// // A WebSocketFrame means a continuation of an established websocket
+		// // connection
+		// } else if (msg instanceof WebSocketFrame) {
+		// handleWebSocketFrame(ctx, (WebSocketFrame) msg, e);
+		// // A channel buffer we treat as a VNC protocol request
+		// } else if (msg instanceof ChannelBuffer) {
+		// handleVncDirect(ctx, (ChannelBuffer) msg, e);
+		// }
 	}
+
+	// private void handleHttpRequest(ChannelHandlerContext ctx, HttpRequest
+	// req, final MessageEvent e) throws Exception {
+	// // Allow only GET methods.
+	// if (req.getMethod() != GET) {
+	// sendHttpResponse(ctx, req, new DefaultHttpResponse(HTTP_1_1, FORBIDDEN));
+	// return;
+	// }
+	//
+	// String upgradeHeader = req.getHeader("Upgrade");
+	// if (upgradeHeader != null &&
+	// upgradeHeader.toUpperCase().equals("WEBSOCKET")) {
+	// Logger.getLogger(WebsockifyProxyHandler.class.getName()).fine("Websocket request from "
+	// + e.getRemoteAddress() + ".");
+	// // Handshake
+	// WebSocketServerHandshakerFactory wsFactory = new
+	// WebSocketServerHandshakerFactory(this.getWebSocketLocation(req),
+	// "base64", false);
+	// this.handshaker = wsFactory.newHandshaker(req);
+	// if (this.handshaker == null) {
+	// wsFactory.sendUnsupportedWebSocketVersionResponse(ctx.getChannel());
+	// } else {
+	// // deal with a bug in the flash websocket emulation
+	// // it specifies WebSocket-Protocol when it seems it should
+	// // specify Sec-WebSocket-Protocol
+	// String protocol = req.getHeader("WebSocket-Protocol");
+	// String secProtocol = req.getHeader("Sec-WebSocket-Protocol");
+	// if (protocol != null && secProtocol == null) {
+	// req.addHeader("Sec-WebSocket-Protocol", protocol);
+	// }
+	// this.handshaker.handshake(ctx.getChannel(), req);
+	// }
+	// // ensureTargetConnection(e, true, null);
+	// } else {
+	// HttpRequest request = (HttpRequest) e.getMessage();
+	// String redirectUrl = isRedirect(request.getUri());
+	// if (redirectUrl != null) {
+	// Logger.getLogger(WebsockifyProxyHandler.class.getName()).fine("Redirecting to "
+	// + redirectUrl + ".");
+	// HttpResponse response = new DefaultHttpResponse(HTTP_1_1,
+	// TEMPORARY_REDIRECT);
+	// response.setHeader(HttpHeaders.Names.LOCATION, redirectUrl);
+	// sendHttpResponse(ctx, req, response);
+	// return;
+	// } else if (webDirectory != null)/*
+	// * not a websocket connection
+	// * attempt
+	// */{
+	// handleWebRequest(ctx, e);
+	// }
+	// }
+	// }
 
 	private void handleWebSocketFrame(ChannelHandlerContext ctx, WebSocketFrame frame, final MessageEvent e) {
 
 		// Check for closing frame
-		if (frame instanceof CloseWebSocketFrame) {
-			this.handshaker.close(ctx.getChannel(), (CloseWebSocketFrame) frame);
-			return;
-		} else if (frame instanceof PingWebSocketFrame) {
-			ctx.getChannel().write(new PongWebSocketFrame(frame.getBinaryData()));
-			return;
-		} else if (!(frame instanceof TextWebSocketFrame)) {
-			throw new UnsupportedOperationException(String.format("%s frame types not supported", frame.getClass().getName()));
-		}
+//		if (frame instanceof CloseWebSocketFrame) {
+//			this.handshaker.close(ctx.getChannel(), (CloseWebSocketFrame) frame);
+//			return;
+//		} else if (frame instanceof PingWebSocketFrame) {
+//			ctx.getChannel().write(new PongWebSocketFrame(frame.getBinaryData()));
+//			return;
+//		} else if (!(frame instanceof TextWebSocketFrame)) {
+//			throw new UnsupportedOperationException(String.format("%s frame types not supported", frame.getClass().getName()));
+//		}
 
 		TextWebSocketFrame textFrame = (TextWebSocketFrame) frame;
-
+		System.out.println(textFrame);
 		if (isConnected) {
 			ChannelBuffer msg = textFrame.getBinaryData();
 			ChannelBuffer decodedMsg = Base64.decode(msg);
