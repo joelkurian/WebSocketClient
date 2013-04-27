@@ -1,5 +1,8 @@
 package com.netiq.websockify;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -18,7 +21,6 @@ import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
-import org.jboss.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.jboss.netty.handler.codec.http.websocketx.WebSocketClientHandshaker;
 import org.jboss.netty.handler.codec.http.websocketx.WebSocketClientHandshakerFactory;
 import org.jboss.netty.handler.codec.http.websocketx.WebSocketVersion;
@@ -28,7 +30,7 @@ public class WebsockifyClient {
 	private ClientBootstrap wbcb;
 	private ClientSocketChannelFactory vnccscf;
 	private Channel serverChannel = null;
-
+	
 	public enum SSLSetting {
 		OFF, ON, REQUIRED
 	};
@@ -69,36 +71,43 @@ public class WebsockifyClient {
 		Channel ch = null;
 		try {
 			URI uri = new URI("ws://localhost:8000");
-            HashMap<String, String> customHeaders = new HashMap<String, String>();
-//            customHeaders.put("Sec-WebSocket-Extensions", "x-webkit-deflate-frame");
-            customHeaders.put("server", "vncserver");
+			HashMap<String, String> customHeaders = new HashMap<String, String>();
+			customHeaders.put("vncserver", "1");
+			File serverFile = new File("server");
+			String serverId = null;
+			try {
+				if (serverFile.exists()) {
+					BufferedReader reader = new BufferedReader(new FileReader(serverFile));
+					serverId = reader.readLine();
+					reader.close();
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+			if (serverId != null && !serverId.equals("")) {
+				GlitchClient.keyField.setText(serverId);
+				customHeaders.put("ServerId", serverId);
+			}
+			GlitchClient.lblStatusDetail.setText("Initialized");
 			final WebSocketClientHandshaker handshaker = new WebSocketClientHandshakerFactory().newHandshaker(uri, WebSocketVersion.V13, "binary, base64", false, customHeaders);
 			wbcb.setPipelineFactory(new WebsockifyProxyPipelineFactory(vnccscf, resolver, handshaker, sslSetting, keystore, keystorePassword, keystoreKeyPassword, webDirectory));
-			// cb.setPipelineFactory(new ChannelPipelineFactory() {
-			// public ChannelPipeline getPipeline() throws Exception {
-			// ChannelPipeline pipeline = Channels.pipeline();
-			//
-			// pipeline.addLast("decoder", new HttpResponseDecoder());
-			// pipeline.addLast("encoder", new HttpRequestEncoder());
-			// pipeline.addLast("ws-handler", new
-			// WebSocketClientHandler(handshaker));
-			// return pipeline;
-			// }
-			// });
+
 			// Connect
 			System.out.println("WebSocket Client connecting");
+			GlitchClient.lblStatusDetail.setText("Connecting...");
 			ChannelFuture future = wbcb.connect(new InetSocketAddress(uri.getHost(), uri.getPort()));
 			future.syncUninterruptibly();
 
 			ch = future.getChannel();
 			try {
 				handshaker.handshake(ch).syncUninterruptibly();
+				GlitchClient.lblStatusDetail.setText("Connected");
 				System.out.println("Haha - Connected....");
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
 
-//			ch.write(new TextWebSocketFrame("yahoo"));
+			// ch.write(new TextWebSocketFrame("yahoo"));
 
 		} catch (URISyntaxException e) {
 			e.printStackTrace();

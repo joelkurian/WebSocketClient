@@ -12,6 +12,7 @@ import static org.jboss.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileWriter;
 import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
@@ -128,6 +129,7 @@ public class WebsockifyProxyHandler extends SimpleChannelUpstreamHandler {
 						// Begin to accept incoming traffic.
 						Logger.getLogger(WebsockifyProxyHandler.class.getName()).info("Created outbound connection to " + target + ".");
 						inboundChannel.setReadable(true);
+						isConnected = true;
 					} else {
 						Logger.getLogger(WebsockifyProxyHandler.class.getName()).severe("Failed to create outbound connection to " + target + ".");
 						// Close the connection if the connection attempt has
@@ -241,25 +243,17 @@ public class WebsockifyProxyHandler extends SimpleChannelUpstreamHandler {
 	private void handleWebSocketFrame(ChannelHandlerContext ctx, WebSocketFrame frame, final MessageEvent e) {
 
 		// Check for closing frame
-		// if (frame instanceof CloseWebSocketFrame) {
-		// this.handshaker.close(ctx.getChannel(), (CloseWebSocketFrame) frame);
-		// return;
-		// } else if (frame instanceof PingWebSocketFrame) {
-		// ctx.getChannel().write(new
-		// PongWebSocketFrame(frame.getBinaryData()));
-		// return;
-		// } else if (!(frame instanceof TextWebSocketFrame)) {
-		// throw new
-		// UnsupportedOperationException(String.format("%s frame types not supported",
-		// frame.getClass().getName()));
-		// }
+		if (frame instanceof CloseWebSocketFrame) {
+			// this.handshaker.close(ctx.getChannel(), (CloseWebSocketFrame)
+			// frame);
+			return;
+		} else if (frame instanceof PingWebSocketFrame) {
+			ctx.getChannel().write(new PongWebSocketFrame(frame.getBinaryData()));
+			return;
+		} else if (!(frame instanceof TextWebSocketFrame)) {
+			throw new UnsupportedOperationException(String.format("%s frame types not supported", frame.getClass().getName()));
+		}
 
-		// try {
-		// ensureTargetConnection(e, true, null);
-		// } catch (Exception e2) {
-		// // TODO Auto-generated catch block
-		// e2.printStackTrace();
-		// }
 		TextWebSocketFrame textFrame = (TextWebSocketFrame) frame;
 		if (isConnected) {
 			ChannelBuffer msg = textFrame.getBinaryData();
@@ -278,7 +272,12 @@ public class WebsockifyProxyHandler extends SimpleChannelUpstreamHandler {
 			try {
 				if (frameStr.equals("begin")) {
 					ensureTargetConnection(e, true, null);
-					this.isConnected = true;
+				} else if (frameStr.startsWith("id:")) {
+					String id = frameStr.substring(3);
+					GlitchClient.keyField.setText(id);
+					FileWriter writer = new FileWriter(new File("server"));
+					writer.write(id);
+					writer.close();
 				}
 			} catch (Exception e1) {
 				e1.printStackTrace();
