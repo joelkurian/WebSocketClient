@@ -8,7 +8,6 @@ import static org.jboss.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN;
 import static org.jboss.netty.handler.codec.http.HttpResponseStatus.METHOD_NOT_ALLOWED;
 import static org.jboss.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static org.jboss.netty.handler.codec.http.HttpResponseStatus.OK;
-import static org.jboss.netty.handler.codec.http.HttpResponseStatus.TEMPORARY_REDIRECT;
 import static org.jboss.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 import java.io.File;
@@ -60,8 +59,6 @@ import org.jboss.netty.handler.codec.http.websocketx.PongWebSocketFrame;
 import org.jboss.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.jboss.netty.handler.codec.http.websocketx.WebSocketClientHandshaker;
 import org.jboss.netty.handler.codec.http.websocketx.WebSocketFrame;
-import org.jboss.netty.handler.codec.http.websocketx.WebSocketServerHandshaker;
-import org.jboss.netty.handler.codec.http.websocketx.WebSocketServerHandshakerFactory;
 import org.jboss.netty.handler.ssl.SslHandler;
 import org.jboss.netty.handler.stream.ChunkedFile;
 import org.jboss.netty.util.CharsetUtil;
@@ -163,7 +160,6 @@ public class WebsockifyProxyHandler extends SimpleChannelUpstreamHandler {
 		if (frame instanceof TextWebSocketFrame) {
 			TextWebSocketFrame textFrame = (TextWebSocketFrame) frame;
 			handleWebSocketFrame(ctx, textFrame, e);
-			System.out.println("WebSocket Client received message: " + textFrame.getText());
 		} else if (frame instanceof PongWebSocketFrame) {
 			System.out.println("WebSocket Client received pong");
 		} else if (frame instanceof CloseWebSocketFrame) {
@@ -245,18 +241,26 @@ public class WebsockifyProxyHandler extends SimpleChannelUpstreamHandler {
 	private void handleWebSocketFrame(ChannelHandlerContext ctx, WebSocketFrame frame, final MessageEvent e) {
 
 		// Check for closing frame
-//		if (frame instanceof CloseWebSocketFrame) {
-//			this.handshaker.close(ctx.getChannel(), (CloseWebSocketFrame) frame);
-//			return;
-//		} else if (frame instanceof PingWebSocketFrame) {
-//			ctx.getChannel().write(new PongWebSocketFrame(frame.getBinaryData()));
-//			return;
-//		} else if (!(frame instanceof TextWebSocketFrame)) {
-//			throw new UnsupportedOperationException(String.format("%s frame types not supported", frame.getClass().getName()));
-//		}
+		// if (frame instanceof CloseWebSocketFrame) {
+		// this.handshaker.close(ctx.getChannel(), (CloseWebSocketFrame) frame);
+		// return;
+		// } else if (frame instanceof PingWebSocketFrame) {
+		// ctx.getChannel().write(new
+		// PongWebSocketFrame(frame.getBinaryData()));
+		// return;
+		// } else if (!(frame instanceof TextWebSocketFrame)) {
+		// throw new
+		// UnsupportedOperationException(String.format("%s frame types not supported",
+		// frame.getClass().getName()));
+		// }
 
+		// try {
+		// ensureTargetConnection(e, true, null);
+		// } catch (Exception e2) {
+		// // TODO Auto-generated catch block
+		// e2.printStackTrace();
+		// }
 		TextWebSocketFrame textFrame = (TextWebSocketFrame) frame;
-		System.out.println(textFrame);
 		if (isConnected) {
 			ChannelBuffer msg = textFrame.getBinaryData();
 			ChannelBuffer decodedMsg = Base64.decode(msg);
@@ -271,7 +275,6 @@ public class WebsockifyProxyHandler extends SimpleChannelUpstreamHandler {
 			}
 		} else {
 			String frameStr = textFrame.getText();
-			System.out.println(frameStr);
 			try {
 				if (frameStr.equals("begin")) {
 					ensureTargetConnection(e, true, null);

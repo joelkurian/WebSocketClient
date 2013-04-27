@@ -195,7 +195,7 @@ public class PortUnificationHandler extends FrameDecoder {
 		// p.addLast("aggregator", new HttpChunkAggregator(65536));
 		// p.addLast("encoder", new HttpResponseEncoder());
 		// p.addLast("chunkedWriter", new ChunkedWriteHandler());
-		p.addLast("handler", new WebsockifyProxyHandler(vnccscf, resolver, webDirectory));
+//		p.addLast("handler", new WebsockifyProxyHandler(vnccscf, resolver, webDirectory));
 		p.remove(this);
 	}
 
